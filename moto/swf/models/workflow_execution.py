@@ -18,7 +18,7 @@ from .activity_type import ActivityType
 from .decision_task import DecisionTask
 from .history_event import HistoryEvent
 from .timeout import Timeout
-
+from .timer_task import TimerTask
 
 # TODO: extract decision related logic into a Decision class
 class WorkflowExecution(BaseModel):
@@ -85,6 +85,8 @@ class WorkflowExecution(BaseModel):
         self._events = []
         # child workflows
         self.child_workflow_executions = []
+        # timers
+        self._timers = {}
 
     def __repr__(self):
         return "WorkflowExecution(run_id: {0})".format(self.run_id)
@@ -413,6 +415,8 @@ class WorkflowExecution(BaseModel):
                     "details"), attributes.get("reason"))
             elif decision_type == "ScheduleActivityTask":
                 self.schedule_activity_task(event_id, attributes)
+            elif decision_type == "StartTimer":
+                self.start_timer_task(event_id, attributes)
             else:
                 # TODO: implement Decision type: CancelTimer
                 # TODO: implement Decision type: CancelWorkflowExecution
@@ -536,6 +540,38 @@ class WorkflowExecution(BaseModel):
         self.domain.add_to_activity_task_list(task_list, task)
         self.open_counts["openActivityTasks"] += 1
         self.latest_activity_task_timestamp = unix_time()
+
+    def start_timer_task(self, event_id, attributes):
+        timer_id = attributes["timerId"]
+        task = TimerTask(
+            timer_id=timer_id,
+            start_to_fire_timeout=attributes.get("startToFireTimeout"),
+            control=attributes.get("control"),
+            callback=self.process_timer_fired,
+        )
+
+        evt = self._add_event(
+            "TimerStarted",
+            timer_id=task.timer_id,
+            control=task.control,
+            start_to_fire_timeout=task.start_to_fire_timeout,
+        )
+
+        self._timers[timer_id] = task
+
+        task.start(evt.event_id)
+        self.open_counts["openTimers"] += 1
+        self.schedule_decision_task()
+
+    def process_timer_fired(self, timer):
+        evt = self._add_event(
+            "TimerFired",
+            started_event_id=timer.decision_task_completed_event_id,
+            timer_id=timer.timer_id,
+        )
+        
+        self.open_counts["openTimers"] -= 1
+        self.schedule_decision_task()
 
     def _find_activity_task(self, task_token):
         for task in self.activity_tasks:
