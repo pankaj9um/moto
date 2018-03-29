@@ -427,7 +427,6 @@ class WorkflowExecution(BaseModel):
                 # TODO: implement Decision type: ScheduleLambdaFunction
                 # TODO: implement Decision type: SignalExternalWorkflowExecution
                 # TODO: implement Decision type: StartChildWorkflowExecution
-                # TODO: implement Decision type: StartTimer
                 raise NotImplementedError(
                     "Cannot handle decision: {0}".format(decision_type))
 

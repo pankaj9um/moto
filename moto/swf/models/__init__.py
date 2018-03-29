@@ -1,4 +1,5 @@
 from __future__ import unicode_literals
+import time
 
 import boto.swf
 
@@ -187,21 +188,22 @@ class SWFBackend(BaseBackend):
         # aren't distributed.
         #
         # TODO: handle long polling (case 2) for decision tasks
-        candidates = []
-        for _task_list, tasks in domain.decision_task_lists.items():
-            if _task_list == task_list:
-                candidates += [t for t in tasks if t.state == "SCHEDULED"]
-        if any(candidates):
-            # TODO: handle task priorities (but not supported by boto for now)
-            task = min(candidates, key=lambda d: d.scheduled_at)
-            wfe = task.workflow_execution
-            wfe.start_decision_task(task.task_token, identity=identity)
-            return task
-        else:
-            # Sleeping here will prevent clients that rely on the timeout from
-            # entering in a busy waiting loop.
+        t0 = time.time()
+        while time.time() - t0 < 60:
+            candidates = []
+            for _task_list, tasks in domain.decision_task_lists.items():
+                if _task_list == task_list:
+                    candidates += [t for t in tasks if t.state == "SCHEDULED"]
+            if any(candidates):
+                # TODO: handle task priorities (but not supported by boto for now)
+                task = min(candidates, key=lambda d: d.scheduled_at)
+                wfe = task.workflow_execution
+                wfe.start_decision_task(task.task_token, identity=identity)
+                return task
+            
             sleep(1)
-            return None
+        
+        return None
 
     def count_pending_decision_tasks(self, domain_name, task_list):
         # process timeouts on all objects
@@ -285,21 +287,21 @@ class SWFBackend(BaseBackend):
         # aren't distributed.
         #
         # TODO: handle long polling (case 2) for activity tasks
-        candidates = []
-        for _task_list, tasks in domain.activity_task_lists.items():
-            if _task_list == task_list:
-                candidates += [t for t in tasks if t.state == "SCHEDULED"]
-        if any(candidates):
-            # TODO: handle task priorities (but not supported by boto for now)
-            task = min(candidates, key=lambda d: d.scheduled_at)
-            wfe = task.workflow_execution
-            wfe.start_activity_task(task.task_token, identity=identity)
-            return task
-        else:
-            # Sleeping here will prevent clients that rely on the timeout from
-            # entering in a busy waiting loop.
-            sleep(1)
-            return None
+
+        t0 = time.time()
+        while time.time() - t0 < 60:
+            candidates = []
+            for _task_list, tasks in domain.activity_task_lists.items():
+                if _task_list == task_list:
+                    candidates += [t for t in tasks if t.state == "SCHEDULED"]
+            if any(candidates):
+                # TODO: handle task priorities (but not supported by boto for now)
+                task = min(candidates, key=lambda d: d.scheduled_at)
+                wfe = task.workflow_execution
+                wfe.start_activity_task(task.task_token, identity=identity)
+                return task
+        
+        return None
 
     def count_pending_activity_tasks(self, domain_name, task_list):
         # process timeouts on all objects
